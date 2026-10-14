@@ -1,0 +1,61 @@
+# services:
+#   backend:
+#     build: .
+#     container_name: video-assistant-backend
+#     restart: always
+
+#     env_file:
+#       - .env
+
+#     ports:
+#       - "8000:8000"
+
+#     volumes:
+#       - ./downloads:/app/downloads
+#       - ./temp_uploads:/app/temp_uploads
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: transcribex-redis-broker
+    restart: always
+    ports:
+      - "6379:6379"
+
+  backend:
+    image: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
+    container_name: transcribex-backend-container
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app  # 👈 Keep base root visible
+    ports:
+      - "8000:8000"
+    working_dir: /app  # 👈 Explicitly force runtime context to root folder level
+    volumes:
+      - ./downloads:/app/downloads
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      - redis
+
+  celery_worker:
+    image: 233250434248.dkr.ecr.ap-southeast-2.amazonaws.com/transcribex-backend:latest
+    container_name: transcribex-celery-worker
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app  # 👈 Keep base root visible
+    working_dir: /app  # 👈 Forces Celery execution workspace context to root
+    command: celery -A app.celery_worker.celery_app worker --loglevel=info --concurrency=1
+    volumes:
+      - ./downloads:/app/downloads
+      - ./temp_uploads:/app/temp_uploads
+    depends_on:
+      - redis
+      - backend
